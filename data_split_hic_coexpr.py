@@ -2,8 +2,8 @@ import os, time, sys, math,random
 import numpy as np
 import hickle as hkl
 import pandas as pd
-
-
+#import pickle
+import datetime
 
 # prepare in parallel coexpr and hic so that i can discard patch concurrently
 
@@ -21,6 +21,8 @@ import pandas as pd
 # python data_split_hic_coexpr.py <HIC_INPUT_DIR> <HIC_FILE_PREFIX> <HIC_FILE_SUFFIX> <COEXPR_INPUT_DIR> <COEXPR_FILE_PREFIX> <COEXPR_FILE_SUFFIX> <OUT_DIR>
 # python data_split_hic_coexpr.py Hi-C_MCF7_MCF10A_processed_HiCfiles/Heatmaps/chrxchr/40kb HiCStein-MCF7-WT__hg19_ _C-40000-iced.matrix INPUT_AGG_40kb GSE71862_MCF7_MCF10A_RSEM_expectedcounts _agg.txt INPUT_SPLIT_HiC
 
+startTime = datetime.datetime.now()
+
 setDir=""
 
 if len(sys.argv) == 1:
@@ -31,9 +33,9 @@ if len(sys.argv) == 1:
 
     COEXPR_input_dir = "INPUT_AGG_40kb"
     COEXPR_file_prefix = "GSE71862_MCF7_MCF10A_RSEM_expectedcounts"
-    COEXPR_file_suffix = "_agg.txt"
+    COEXPR_file_suffix = "agg.txt"
 
-    output_dir = "INPUT_SPLIT_HiC_COEPXR"
+    output_dir = "INPUT_SPLIT_HiC_COEXPR"
 
 else:
 
@@ -56,6 +58,9 @@ os.makedirs(out_dir, exist_ok=True)
 logFile = os.path.join(out_dir, "split_hic_coexpr_logFile.txt")
 print("... write logs in:\t" + logFile)
 
+if os.path.exists(logFile):
+    os.remove(logFile)
+
 if not os.path.exists(HIC_input_dir):
     print("ERROR: Hi-C data path wrong !")
     sys.exit(1)
@@ -71,9 +76,9 @@ train_chromo_list = list(range(1,18))
 test_chromo_list = list(range(18,23))
 
 
-chromo_list = list(range(1,2))   #chr1-chr22
-train_chromo_list = list(range(1,2))
-test_chromo_list = list(range(1,2))
+#chromo_list = list(range(1,2))   #chr1-chr22
+#train_chromo_list = list(range(1,2))
+#test_chromo_list = list(range(1,2))
 
 
 size_file = setDir+"/mnt/etemp/marie/hicGAN/hicgan_virtual/KARPAS_data/all_chr_length.txt"
@@ -110,7 +115,7 @@ def hic_matrix_extraction(coexpr_inDir, hic_inDir, coexpr_filePrefix, hic_filePr
         chr_size = chrSizeDict[chromo]
         mat_dim = int(math.ceil(chr_size*1.0/binSize))
         print("> START " + chromo)
-        print("... size = " + str(chr_size) + " ( " + str(mat_dim) + " bins)")
+        print("... size = " + str(chr_size) + " (" + str(mat_dim) + " bins)")
         coexpr_file = '%s/%s_%s_%s'%(coexpr_inDir, coexpr_filePrefix, chromo, coexpr_fileSuffix)
         print(coexpr_file)
         assert os.path.exists(coexpr_file)
@@ -142,20 +147,23 @@ def hic_matrix_extraction(coexpr_inDir, hic_inDir, coexpr_filePrefix, hic_filePr
         chr_size = chrSizeDict[chromo]
         mat_dim = int(math.ceil(chr_size*1.0/binSize))
         print("> START " + chromo)
-        print("... size = " + str(chr_size) + " ( " + str(mat_dim) + " bins)")
+        print("... size = " + str(chr_size) + " (" + str(mat_dim) + " bins)")
         hic_file = '%s/%s_%s_%s'%(hic_inDir, hic_filePrefix, chromo, hic_fileSuffix)
         print(hic_file)
         assert os.path.exists(hic_file)
         print("... build hi-c matrix from:\t" + hic_file)
 
         if hicFormat == "dekker":
-            hic_contact_dt = pd.read_csv(hic_file, header=0, index_col=1, sep="\t")
+            hic_contact_dt = pd.read_csv(hic_file, header=0, index_col=0, sep="\t")
             assert hic_contact_dt.shape[0] == hic_contact_dt.shape[1]
             hic_contact_matrix = hic_contact_dt.values
             # replace nan values with 0
             # hic_contact_matrix = np.nan_to_num(hic_contact_matrix, 0)  # modified in place but otherwise printed
             # => UPDATE: base quality threshold on  # of NAN
             assert hic_contact_matrix.shape[0] == hic_contact_matrix.shape[1]
+            print("... build from dekker: OK")
+
+            hic_contact_matrix
 
         elif hicFormat == "agg":
             hic_contact_matrix = np.zeros((mat_dim,mat_dim))
@@ -180,9 +188,15 @@ def hic_matrix_extraction(coexpr_inDir, hic_inDir, coexpr_filePrefix, hic_filePr
         hic_contacts_dict[chromo] = hic_contact_matrix
 
     # end-for iterating over chromosomes
+#    df = open("tmp.pkl", 'wb')
+#    pickle.dump(hic_contacts_dict, df)
+#    df.close()
 
-    nb_coexpr_contacts={item:sum(sum(coexpr_contacts_dict[item])) for item in coexpr_contacts_dict.keys()}
-    nb_hic_contacts={item:sum(sum(hic_contacts_dict[item])) for item in hic_contacts_dict.keys()}
+    # DO NOT COUNT THE NAN VALUES FOR THE OUTPUT ???
+    #nb_coexpr_contacts={item:sum(sum(coexpr_contacts_dict[item])) for item in coexpr_contacts_dict.keys()}
+    nb_coexpr_contacts={item:sum(sum(np.nan_to_num(coexpr_contacts_dict[item],0))) for item in coexpr_contacts_dict.keys()}
+    #nb_hic_contacts={item:sum(sum(hic_contacts_dict[item])) for item in hic_contacts_dict.keys()}
+    nb_hic_contacts={item:sum(sum(np.nan_to_num(hic_contacts_dict[item], 0))) for item in hic_contacts_dict.keys()}
     
     return coexpr_contacts_dict,hic_contacts_dict,nb_coexpr_contacts,nb_hic_contacts
 
@@ -206,11 +220,12 @@ def crop_hic_matrix_by_chrom(chrom,norm_type,patch_size,thresh_dist):
     col = min(col_coexpr, col_hic)
 
     assert row == col
+    
 
-
-    if row <= thresh_dist or col <= thresh_dist:
-        print('HiC matrix size wrong!')
-        sys.exit(1)
+    if thresh_dist != math.inf:
+        if row <= thresh_dist or col <= thresh_dist:
+            print('HiC matrix size wrong!')
+            sys.exit(1)
 
     def quality_control_hic(mat,quality_thresh=0.05):
         # first check number of nan
@@ -263,7 +278,7 @@ def crop_hic_matrix_by_chrom(chrom,norm_type,patch_size,thresh_dist):
                         print('Normalization wrong!')
                         sys.exit()
                     
-                    # after the quality check, replace the NaN with 0 - for coexpr ???
+                    # WHAT TO DO WITH THE NAN ??? after the quality check, replace the NaN with 0 - for coexpr ???
                     hic_contact = np.nan_to_num(hic_contact, 0)
                     coexpr_contact = np.nan_to_num(coexpr_contact, 0)
 
@@ -275,7 +290,7 @@ def crop_hic_matrix_by_chrom(chrom,norm_type,patch_size,thresh_dist):
 
     
     mylog = open(logFile,"a+") 
-    mylog.write(chrom + " - pass quality control:\t" + str(tot_quality) + "/" + str(tot_idx) )
+    mylog.write(chrom + " - pass quality control:\t" + str(tot_quality) + "/" + str(tot_idx) + "\n")
     mylog.close() 
 
     return crop_mats_coexpr,crop_mats_hic,distance
@@ -292,7 +307,7 @@ def data_split(chromo_list,norm_type, train_data):
     assert len(chromo_list) > 0
     hr_mats,lr_mats=[],[]
     for chrom in chromo_list:
-        crop_mats_coexpr,crop_mats_hic,distance = crop_hic_matrix_by_chrom(chrom=chrom, norm_type=norm_type, patch_size=patchSizeBin ,thresh_dist=maxDistBin)
+        crop_mats_coexpr,crop_mats_hic,distance = crop_hic_matrix_by_chrom(chrom=chrom, norm_type=norm_type, patch_size=patchSizeBin ,thresh_dist=maxDistBin) # returns coexpr,hic,dist
         distance_all+=distance
         hr_mats.append(crop_mats_coexpr)
         lr_mats.append(crop_mats_hic)
@@ -319,7 +334,7 @@ def data_split(chromo_list,norm_type, train_data):
 print("> extract Hi-C data and prepare matrices... ")
 
 
-coexpr_contacts_dict,hic_contacts_dict,nb_coexpr_contacts,nb_hic_contacts = hic_matrix_extraction(hic_inDir=HIC_input_dir, hic_filePrefix=HIC_file_prefix, hic_fileSuffix=HIC_file_suffix,coexpr_inDir=COEXPR_input_dir, coexpr_filePrefix=COEXPR_file_prefix,coexpr_fileSuffix=COEXPR_file_suffix,chrSizeDict=chrSizeDict, binSize = bin_size)
+coexpr_contacts_dict,hic_contacts_dict,nb_coexpr_contacts,nb_hic_contacts = hic_matrix_extraction(hic_inDir=HIC_input_dir, hic_filePrefix=HIC_file_prefix, hic_fileSuffix=HIC_file_suffix,coexpr_inDir=COEXPR_input_dir, coexpr_filePrefix=COEXPR_file_prefix,coexpr_fileSuffix=COEXPR_file_suffix,chrSizeDict=chrSizeDict, binSize = bin_size, hicFormat = "dekker")
 
 max_coexpr_contact = max([nb_coexpr_contacts[item] for item in nb_coexpr_contacts.keys()])
 max_hic_contact = max([nb_hic_contacts[item] for item in nb_hic_contacts.keys()])
@@ -331,6 +346,9 @@ print("> extract normalized Hi-C data... ")
 #hic_contacts_norm_dict = {item:np.log2(hic_contacts_dict[item]*max_hic_contact/sum(sum(hic_contacts_dict[item]))+1) for item in hic_contacts_dict.keys()}
 #max_coexpr_contact_norm={item:coexpr_contacts_norm_dict[item].max() for item in coexpr_contacts_dict.keys()}
 #max_hic_contact_norm={item:hic_contacts_norm_dict[item].max() for item in hic_contacts_dict.keys()}
+# STILL SET THE VARIABLES BECAUSE USED IN THE FUNCTIONS
+coexpr_contacts_norm_dict = coexpr_contacts_dict
+hic_contacts_norm_dict = hic_contacts_dict
 max_coexpr_contact={item:coexpr_contacts_dict[item].max() for item in coexpr_contacts_dict.keys()}
 max_hic_contact={item:hic_contacts_dict[item].max() for item in hic_contacts_dict.keys()}
 
@@ -386,3 +404,13 @@ print("... written: " + test_data_file)
 #hr_mats_test,lr_mats_test,distance_test = data_split(['chrom%d'%idx for idx in list(range(18,23))],norm_type=0)
 #hkl.dump([lr_mats_train,hr_mats_train,distance_train],'data/%s/train_data_raw_count.hkl'%cell)
 #hkl.dump([lr_mats_test,hr_mats_test,distance_test],'data/%s/test_data_raw_count.hkl'%cell)
+
+
+
+################################################################################################
+################################################################################################ DONE
+################################################################################################
+endTime = datetime.datetime.now()
+print("*** DONE")
+print(str(startTime) + " - " + str(endTime))
+
