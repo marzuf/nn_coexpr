@@ -14,10 +14,10 @@ import hickle as hkl
 
 import datetime
 
-# INPUT_SPLIT_HiC_COEPXR/INPUT_SPLIT_HiC_COEPXR_nb_coexpr_contacts.hkl
+# INPUT_SPLIT_HiC_COEXPR/INPUT_SPLIT_HiC_COEXPR_nb_coexpr_contacts.hkl
 
 #python train_hicGAN.py <TRAIN_DATA_file> <MAIN_OUTPUT_DIR> 
-# python train_nnCoexpr.py INPUT_SPLIT_HiC_COEPXR/INPUT_SPLIT_HiC_COEXPR_train_data.hkl TRAIN_coexprCNN
+# python train_nnCoexpr.py INPUT_SPLIT_HiC_COEXPR/INPUT_SPLIT_HiC_COEXPR_train_data.hkl TRAIN_coexprCNN
 
 #GPU setting and Global parameters
 # os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6" #MZ: not used ???
@@ -47,7 +47,10 @@ checkpoint_dir = os.path.join(output_dir, "checkpoint")
 log_dir = os.path.join(output_dir, "log")
 graph_dir = os.path.join(output_dir, "graph")
 saveCNN_dir = os.path.join(output_dir, "samples")
-
+log_file = os.path.join(output_dir, "params_logFile.txt")
+print("... write logs in:\t" + log_file)
+if os.path.exists(log_file):
+    os.remove(log_file)
 
 tl.global_flag['mode']='coexprCNN'
 tl.files.exists_or_mkdir(checkpoint_dir)
@@ -55,6 +58,12 @@ tl.files.exists_or_mkdir(saveCNN_dir)
 tl.files.exists_or_mkdir(log_dir)
 
 # HARD-CODED !!!
+
+mylog = open(log_file,"a+") 
+plog = "startTime\t=\t" + str(startTime)
+print(plog)
+mylog.write(plog + "\n")
+mylog.close() 
 
 print("!!! WARNING: hard-coded settings")
 
@@ -66,22 +75,34 @@ beta1 = 0.9
 ## initialize G # MZ: COMMENTED SECTION ???
 #n_epoch_init = 100 # MZ: n_epoch_init -> used only in commented section
 #n_epoch_init = 1
-n_epoch = 5#3000
+n_epoch = 1000#3000
 lr_decay = 0.1
 decay_every = int(n_epoch / 2)
 #ni = int(np.sqrt(batch_size)) # MZ:not used
 
-# added MZ
-chromo_list = list(range(1,23))
-chromo_list = list(range(1,2))
 
-print("batch_size = " + str(batch_size))
-print("lr_init = " + str(lr_init))
-print("beta1 = " + str(beta1))
-print("n_epoch = " + str(n_epoch))
-print("lr_decay = " + str(lr_decay))
-print("decay_every = " + str(decay_every))
-print("chromo_list = " + str(chromo_list))
+mylog = open(log_file,"a+") 
+plog = "> HARD-CODED SETTINGS:"
+mylog.write(plog + "\n")
+plog = "batch_size\t=\t" + str(batch_size) 
+print(plog)
+mylog.write(plog + "\n")
+plog = "lr_init\t=\t" + str(lr_init) 
+print(plog)
+mylog.write(plog + "\n")
+plog = "beta1\t=\t" + str(beta1) 
+print(plog)
+mylog.write(plog + "\n")
+plog = "n_epoch\t=\t" + str(n_epoch)
+print(plog)
+mylog.write(plog + "\n")
+plog = "lr_decay\t=\t" + str(lr_decay)
+print(plog)
+mylog.write(plog + "\n")
+plog = "decay_every\t=\t" + str(decay_every)
+print(plog)
+mylog.write(plog + "\n")
+mylog.close() 
 
 
 #coexpr_mats_train,hic_mats_train = training_data_split(['chr%d'%idx for idx in list(range(1,18))])
@@ -99,6 +120,18 @@ hic_mats_train = tmp[0]
 coexpr_mats_train = tmp[1]
 
 
+mylog = open(log_file,"a+") 
+plog = "hic_mats_train.shape\t=\t" + str(hic_mats_train.shape)
+print(plog)
+mylog.write(plog + "\n")
+plog = "coexpr_mats_train.shape\t=\t" + str(coexpr_mats_train.shape)
+print(plog)
+mylog.write(plog + "\n")
+mylog.close() 
+
+
+
+
 
 # Generator network adopts a novel dual-stream residual architecture which contains five inner residual blocks (RBs) and an outer skip connection.
 # It outputs a super resolution Hi-C sample given an insufficient sequenced Hi-C sample as input. 
@@ -113,13 +146,13 @@ def coexprCNN(t_image, is_train=False, reuse=False):
     g_init = tf.random_normal_initializer(1., 0.02)
     with tf.variable_scope("coexprCNN", reuse=reuse) as vs:
         n = InputLayer(t_image, name='in')
-#        n = Conv2d(n, 64, (3, 3), (1, 1), act=tf.nn.relu, padding='SAME', W_init=w_init, b_init=b_init, name='n64s1/c1')
-#        n = Conv2d(n, 128, (3, 3), (1, 1), act=tf.nn.relu, padding='SAME', W_init=w_init, b_init=b_init, name='n128s1/c2')
-#        n = Conv2d(n, 256, (3, 3), (1, 1), act=tf.nn.relu, padding='SAME', W_init=w_init, b_init=b_init, name='n256s1/c3')
-
         n = Conv2d(n, 64, (3, 3), (1, 1), act=tf.nn.relu, padding='SAME', W_init=w_init, b_init=b_init, name='n64s1/c1')
-        n = Conv2d(n, 64, (3, 3), (1, 1), act=tf.nn.relu, padding='SAME', W_init=w_init, b_init=b_init, name='n128s1/c2')
-        n = Conv2d(n, 64, (3, 3), (1, 1), act=tf.nn.relu, padding='SAME', W_init=w_init, b_init=b_init, name='n256s1/c3')
+        n = Conv2d(n, 128, (3, 3), (1, 1), act=tf.nn.relu, padding='SAME', W_init=w_init, b_init=b_init, name='n128s1/c2')
+        n = Conv2d(n, 256, (3, 3), (1, 1), act=tf.nn.relu, padding='SAME', W_init=w_init, b_init=b_init, name='n256s1/c3')
+
+#        n = Conv2d(n, 64, (3, 3), (1, 1), act=tf.nn.relu, padding='SAME', W_init=w_init, b_init=b_init, name='n64s1/c1')
+#        n = Conv2d(n, 64, (3, 3), (1, 1), act=tf.nn.relu, padding='SAME', W_init=w_init, b_init=b_init, name='n128s1/c2')
+#        n = Conv2d(n, 64, (3, 3), (1, 1), act=tf.nn.relu, padding='SAME', W_init=w_init, b_init=b_init, name='n256s1/c3')
 
 
         n = Conv2d(n, 1, (1, 1), (1, 1), act=tf.nn.tanh, padding='SAME', W_init=w_init, name='out')
