@@ -2,13 +2,10 @@
 # coding: utf-8
 
 import os, time, pickle, random, time, sys, math
-from datetime import datetime
+
 import numpy as np
 from time import localtime, strftime
 import logging, scipy
-import tensorflow as tf
-import tensorlayer as tl
-from tensorlayer.layers import *
 import matplotlib.pyplot as plt
 import hickle as hkl
 
@@ -20,49 +17,35 @@ import datetime
 
 # INPUT_SPLIT_HiC_COEPXR/INPUT_SPLIT_HiC_COEPXR_nb_coexpr_contacts.hkl
 
-#python train_hicGAN.py <TRAIN_DATA_file> <MAIN_OUTPUT_DIR> 
-# python train_nnCoexpr.py INPUT_SPLIT_HiC_COEPXR/INPUT_SPLIT_HiC_COEXPR_train_data.hkl TRAIN_coexprCNN
+# python linreg_coexpr.py INPUT_SPLIT_HiC_COEXPR/INPUT_SPLIT_HiC_COEXPR_train_data_sub100.hkl INPUT_SPLIT_HiC_COEXPR/INPUT_SPLIT_HiC_COEXPR_test_data_sub100.hkl OUTPUT_LINREG_SUB100
+# python linreg_coexpr.py <train_data_file> <test_data_file> <OUTPUT_DIR>
 
-#GPU setting and Global parameters
-# os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6" #MZ: not used ???
 
-#checkpoint_dir = "checkpoint"
-#log_dir = "log"
-#graph_dir = "graph"
-#saveCNN_dir = "samples"
-#checkpoint_dir = sys.argv[1]
-#log_dir = sys.argv[2]
-#graph_dir = sys.argv[3]
-#saveCNN_dir = sys.argv[4]
-
+# train_data_file = "INPUT_SPLIT_HiC_COEXPR/INPUT_SPLIT_HiC_COEXPR_train_data_sub100.hkl"
 
 startTime = datetime.datetime.now()
 
-
 train_data_file = sys.argv[1]
+test_data_file = sys.argv[2]
 
 if not os.path.exists(train_data_file):
-    print("ERROR: input file does not exist !")
+    print("ERROR: input train data file does not exist !")
     sys.exit(1)
 
-output_dir = sys.argv[2]
+if not os.path.exists(test_data_file):
+    print("ERROR: input test data file does not exist !")
+    sys.exit(1)
+
+output_dir = sys.argv[3]
 os.makedirs(output_dir, exist_ok = True)
-checkpoint_dir = os.path.join(output_dir, "checkpoint")
-log_dir = os.path.join(output_dir, "log")
-graph_dir = os.path.join(output_dir, "graph")
-saveCNN_dir = os.path.join(output_dir, "samples")
+
 log_file = os.path.join(output_dir, "params_logFile.txt")
 print("... write logs in:\t" + log_file)
 if os.path.exists(log_file):
     os.remove(log_file)
 
-tl.global_flag['mode']='coexprCNN'
-tl.files.exists_or_mkdir(checkpoint_dir)
-tl.files.exists_or_mkdir(saveCNN_dir)
-tl.files.exists_or_mkdir(log_dir)
 
 # HARD-CODED !!!
-
 mylog = open(log_file,"a+") 
 plog = "startTime\t=\t" + str(startTime)
 print(plog)
@@ -71,18 +54,9 @@ mylog.close()
 
 print("!!! WARNING: hard-coded settings")
 
-patch_size = 10 #[10 x 40 kb; intially 40: 40x10kb]
 
 batch_size = 128
-lr_init = 1e-5
-beta1 = 0.9
-## initialize G # MZ: COMMENTED SECTION ???
-#n_epoch_init = 100 # MZ: n_epoch_init -> used only in commented section
-#n_epoch_init = 1
-n_epoch = 1000#3000
-lr_decay = 0.1
-decay_every = int(n_epoch / 2)
-#ni = int(np.sqrt(batch_size)) # MZ:not used
+batch_size = 1
 
 
 mylog = open(log_file,"a+") 
@@ -92,14 +66,6 @@ plog = "batch_size\t=\t" + str(batch_size)
 print(plog)
 mylog.write(plog + "\n")
 mylog.close() 
-
-
-#coexpr_mats_train,hic_mats_train = training_data_split(['chr%d'%idx for idx in list(range(1,18))])
-
-#hic_mats_train,coexpr_mats_train = hkl.load('./train_data.hkl')
-
-#coexpr_mats_train_scaled = [item*2.0/item.max()-1 for item in coexpr_mats_train]
-#hic_mats_train_scaled = [item*2.0/item.max()-1 for item in hic_mats_train]
 
 
 # depending of the data used, might also hold distances
@@ -116,9 +82,6 @@ plog = "coexpr_mats_train.shape\t=\t" + str(coexpr_mats_train.shape)
 print(plog)
 mylog.write(plog + "\n")
 mylog.close() 
-
-
-
 
 tmp = hkl.load(test_data_file)
 hic_mats_test = tmp[0]
@@ -180,10 +143,7 @@ mylog.close()
 
 ###========================= fit the linear regressions =========================###
 
-print("... start linear regression"\n)
-
-
-  
+print("... start linear regression\n")
 
 all_errMSE = []
 
@@ -198,47 +158,39 @@ for idx in range(0, len(coexpr_mats_train)-batch_size, batch_size):
     # create linear regression object
     lreg = linear_model.LinearRegression() # sklearn.linear_model
 
-    # train the model using training set
-    regr.fit(b_imgs_input_X_train, b_imgs_target_Y_train)
+    # train the model using training set # => should be of shape (n, 1)
+    lreg.fit(b_imgs_input_X_train.flatten()[:,np.newaxis], b_imgs_target_Y_train.flatten()[:,np.newaxis])
 
 
     ## ITERATE OVER THE TEST DATA
 
     assert len(hic_mats_test) == len(coexpr_mats_test)
-
-    repMSE = 0
-    i_avg = 0
-    for i_rep in range(0, len(hic_mats_test)):
-        i_avg += 1
-        print("..." + " - batch " + str(idx+1) + "/" + str(len(coexpr_mats_train)-batch_size) + " : i_rep " + str(i_rep) + "/" + str(len(hic_mats_test) + 1) )
-
-
-        b_imgs_input_X_test = hic_mats_test[i_rep][idx:idx + batch_size]  # iput: low-resol -> hic-data
-        b_imgs_target_Y_test = coexpr_mats_test[i_rep][idx:idx + batch_size] # output: high-resol -> coexpr
-
-
-        # make predictions for the test data # => iterate over the test data
-
-        b_imgs_target_Y_test_PRED = regr.predict(b_imgs_input_X_test)
-
-        errMSE = mean_squared_error(b_imgs_target_Y_test, b_imgs_target_Y_test_PRED) # sklearn.metrics.mean_squared_error
-
-        repMSE += errMSE
-        
-    avgMSE = repMSE*1.0/i_avg
-
-    all_errMSE.append(avgMSE) 
-
     
+    # ??? TEST ALL TEST DATA IN ONE RUN ???    
+    
+    b_imgs_input_X_test = hic_mats_test[idx:idx + batch_size]  # iput: low-resol -> hic-data
+    b_imgs_target_Y_test = coexpr_mats_test[idx:idx + batch_size] # output: high-resol -> coexpr
+
+    b_imgs_target_Y_test_PRED = lreg.predict(b_imgs_input_X_test.flatten()[:,np.newaxis])
+
+    errMSE = mean_squared_error(b_imgs_target_Y_test.flatten()[:,np.newaxis], b_imgs_target_Y_test_PRED) # sklearn.metrics.mean_squared_error
+   
+
+    if idx % 10 == 0:
+        print("... batch " + str(idx+1) + "/" + str(len(coexpr_mats_train)-batch_size) + "\t:\tMSE = " + str(errMSE))
+        
+
+    all_errMSE.append(errMSE) 
+
+    # HARD-CODED !!!
+    mylog = open(log_file,"a+") 
+    plog = "idx\t=\t" + str(idx) + "; MSE\t=\t" + str(errMSE)
+    print(plog)
+    mylog.write(plog + "\n")
+    mylog.close() 
 
 
-
-
-
-
-
-
-all_errMSE_file = os.path.join(out_dir, "all_errMSE.hkl")
+all_errMSE_file = os.path.join(output_dir, "all_errMSE.hkl")
 hkl.dump(all_errMSE, all_errMSE_file)
 print("... written: " + all_errMSE_file)
 
@@ -254,7 +206,13 @@ endTime = datetime.datetime.now()
 print("*** DONE")
 print(str(startTime) + " - " + str(endTime))
 
+mylog = open(log_file,"a+") 
+mylog.write(str(startTime) + "\n" + str(endTime))
+mylog.close() 
 
+print("... logs written in: " + log_file)
+
+  
 
 
 

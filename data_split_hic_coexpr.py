@@ -74,6 +74,11 @@ if not os.path.exists(COEXPR_input_dir):
 chromo_list = list(range(1,23))   #chr1-chr22
 train_chromo_list = list(range(1,18))
 test_chromo_list = list(range(18,23))
+# for 1-4
+chromo_list = list(range(1,5))   #chr1-chr22
+train_chromo_list = list(range(1,3))
+test_chromo_list = list(range(3,5))
+
 
 
 #chromo_list = list(range(1,2))   #chr1-chr22
